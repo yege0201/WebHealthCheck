@@ -1,12 +1,23 @@
-﻿<Window x:Class="WpfApp1.MainWindow"
+﻿<Window x:Class="WebHealthCheck.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:local="clr-namespace:WpfApp1"
+        xmlns:local="clr-namespace:WebHealthCheck"
         xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+        xmlns:vm="clr-namespace:WebHealthCheck.ViewModels"
         mc:Ignorable="d"
-        Title="网站可访问性检查工具" MinHeight="660" MinWidth="1200" Icon="Resources/logo.ico">
+        Title="网站可访问性检查工具"
+        MinHeight="660" MinWidth="1280"
+        Height="660" Width="1280"
+        Icon="Resources/logo.ico">
+    <Window.DataContext>
+        <vm:ShowDataViewModel/>
+    </Window.DataContext>
+    <Window.Resources>
+        <!--颜色转换器-->
+        <local:ColorConverter x:Key="ColorConverter"/>
+    </Window.Resources>
     <Grid Margin="12">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -30,10 +41,13 @@
             </Grid.RowDefinitions>
 
             <TextBlock Grid.Row="0" Text="目标列表" FontWeight="Bold" Margin="0,0,0,8"/>
-            <ui:TextBox Grid.Row="1" Margin="0,0,0,8" PlaceholderText="https://www.baidu.com&#x0A;http://127.0.0.1&#x0A;http://127.0.0.1:8080&#x0A;127.0.0.1:8443&#x0A;127.0.0.1"
+            <ui:TextBox x:Name="TargetsBox" Grid.Row="1" Margin="0,0,0,8" PlaceholderText="示例：&#x0A;https://www.baidu.com&#x0A;http://127.0.0.1&#x0A;http://127.0.0.1:8080&#x0A;127.0.0.1:8443&#x0A;127.0.0.1"
                         BorderBrush="LightGray" FontSize="12" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" TextWrapping="Wrap"/>
-            <StackPanel Grid.Row="2">
-                <ui:Button Content="从文件导入" BorderBrush="LightGray"/>
+            <StackPanel Grid.Row="2" Orientation="Horizontal">
+                <ui:Button x:Name="ImportFromFileButton" Content="从文件导入" BorderBrush="LightGray"
+                           Click="ImportFromFileButton_Click"/>
+                <ui:Button x:Name="ClearTargetsButton" Margin="8,0,0,0" Content="清空目标列表" BorderBrush="LightGray"
+                           Click="ClearTargetsButton_Click"/>
             </StackPanel>
         </Grid>
 
@@ -50,45 +64,48 @@
                 <StackPanel Margin="0,0,0,16">
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Text="自定义 Headers" FontWeight="Bold" Margin="0,0,0,8"/>
-                        <ui:ToggleSwitch OffContent="已禁用" OnContent="已启用" Margin="16,-8,0,0"/>
+                        <ui:ToggleSwitch x:Name="ToggleCustomHeaders" OffContent="已禁用" OnContent="已启用" Margin="16,-8,0,0"/>
                     </StackPanel>
-                    <ui:TextBox Height="72" PlaceholderText="X-Forwarded-For: 127.0.0.1" FontSize="12"
-                            BorderBrush="LightGray" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" TextWrapping="Wrap"/>
+                    <ui:TextBox x:Name="CustomHeaders" IsEnabled="{Binding ElementName=ToggleCustomHeaders, Path=IsChecked, Mode=OneWay}" Height="72"
+                                PlaceholderText="示例：&#x0A;X-Forwarded-For: 127.0.0.1" FontSize="12"
+                                BorderBrush="LightGray" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" TextWrapping="Wrap"/>
                 </StackPanel>
 
                 <!-- 自定义 Cookies 功能 -->
                 <StackPanel Margin="0,0,0,16">
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Text="自定义 Cookies" FontWeight="Bold" Margin="0,0,0,8"/>
-                        <ui:ToggleSwitch OffContent="已禁用" OnContent="已启用" Margin="16,-8,0,0"/>
+                        <ui:ToggleSwitch x:Name="ToggleCustomCookies" OffContent="已禁用" OnContent="已启用" Margin="16,-8,0,0"/>
                     </StackPanel>
-                    <ui:TextBox Height="72" PlaceholderText="SESSION=A202106084F2..." FontSize="12"
-                            BorderBrush="LightGray" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" TextWrapping="Wrap"/>
+                    <ui:TextBox x:Name="CustomCookies" IsEnabled="{Binding ElementName=ToggleCustomCookies, Path=IsChecked, Mode=OneWay}" Height="72"
+                                PlaceholderText="示例：&#x0A;SESSION=A202106084F2..." FontSize="12"
+                                BorderBrush="LightGray" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" TextWrapping="Wrap"/>
                 </StackPanel>
 
                 <!-- 自定义 User-Agent 功能 -->
                 <StackPanel Margin="0,0,0,16">
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Text="自定义 User-Agent" FontWeight="Bold" Margin="0,0,0,8"/>
-                        <ui:ToggleSwitch OffContent="已禁用" OnContent="已启用" Margin="16,-8,0,0"/>
+                        <ui:ToggleSwitch x:Name="ToggleCustomUA" OffContent="已禁用" OnContent="已启用" Margin="16,-8,0,0"/>
                     </StackPanel>
-                    <ui:TextBox Height="96" PlaceholderText="Mozilla/5.0 (Windows NT 10.0; Win64; x64) &#x0A;AppleWebKit/537.36 (KHTML, like Gecko) &#x0A;Chrome/90.0.44"
-                            BorderBrush="LightGray" FontSize="12" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" TextWrapping="Wrap"/>
+                    <ui:TextBox x:Name="CustomUA" IsEnabled="{Binding ElementName=ToggleCustomUA, Path=IsChecked, Mode=OneWay}" Height="100"
+                                PlaceholderText="示例：&#x0A;Mozilla/5.0 (Windows NT 10.0; Win64; x64) &#x0A;AppleWebKit/537.36 (KHTML, like Gecko) &#x0A;Chrome/126.0.0.0 Safari/537.36 &#x0A;Edg/126.0.0.0"
+                                BorderBrush="LightGray" FontSize="12" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" TextWrapping="Wrap"/>
                 </StackPanel>
 
                 <!-- 请求选项功能 -->
                 <StackPanel Margin="0,0,0,16">
                     <TextBlock Text="请选择请求方法" FontWeight="Bold" Margin="0,0,0,8"/>
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
-                        <RadioButton Content="GET" GroupName="httpMethod"/>
-                        <RadioButton Content="POST" GroupName="httpMethod"/>
+                        <RadioButton x:Name="MethodGetRadioButton" Content="GET" IsChecked="True" GroupName="HttpMethod"/>
+                        <RadioButton x:Name="MethodPostRadioButton" Content="POST" GroupName="HttpMethod" IsEnabled="False" Visibility="Hidden"/>
                     </StackPanel>
-                    <CheckBox Content="是否跟随 301/302 跳转"/>
+                    <CheckBox x:Name="Checked301or302" Content="是否跟随 301/302 跳转" IsEnabled="False" Visibility="Hidden"/>
                 </StackPanel>
 
                 <!-- 任务配置 -->
                 <StackPanel Margin="0,0,0,16">
-                    <TextBlock Text="请选择线程数" FontWeight="Bold" Margin="0,0,0,8"/>
+                    <TextBlock Text="请选择线程数（尚未完成）" FontWeight="Bold" Margin="0,0,0,8"/>
                     <StackPanel Orientation="Horizontal">
                         <Slider x:Name="ThreadCount"
                                 Grid.Column="0"
@@ -110,9 +127,12 @@
             </StackPanel>
             <!-- 任务操作 -->
             <StackPanel Grid.Row="2" Orientation="Horizontal">
-                <ui:Button Content="开 始" BorderBrush="Transparent" Appearance="Primary"/>
-                <ui:Button Content="停 止" BorderBrush="LightGray" Margin="8,0,0,0"/>
-                <ui:Button Content="重 置" BorderBrush="LightGray" Margin="8,0,0,0"/>
+                <ui:Button x:Name="StartButton" Content="开 始" BorderBrush="LightGray" Appearance="Primary"
+                           Click="StartButton_Click"/>
+                <ui:Button x:Name="StopButton" Content="停 止" BorderBrush="LightGray" Margin="8,0,0,0" IsEnabled="False"
+                           Click="StopButton_Click"/>
+                <ui:Button x:Name="ResetButton" Content="重 置" BorderBrush="LightGray" Margin="8,0,0,0"
+                           Click="ResetButton_Click"/>
             </StackPanel>
         </Grid>
 
@@ -128,12 +148,69 @@
             <StackPanel Grid.Row="0" Margin="0,0,0,8">
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                     <TextBlock Text="任务进度：" FontWeight="Bold" />
-                    <TextBlock Text="0/1000"/>
+                    <TextBlock x:Name="CurrentCount" Text="0"/>
+                    <TextBlock Text="/"/>
+                    <TextBlock x:Name="TotalCount" Text="0"/>
                 </StackPanel>
-                <ProgressBar Margin="4" Height="8" IsIndeterminate="False" Value="20" Background="LightGray" />
+                <ProgressBar x:Name="ProgressBar" Margin="0,0,0,2" Height="6" IsIndeterminate="False" Value="0" Maximum="{Binding ElementName=TotalCount, Path=Text}" Background="LightGray" />
             </StackPanel>
             <TextBlock Grid.Row="1" Text="结果列表" FontWeight="Bold" Margin="0,0,0,8"/>
-            <ui:DataGrid Grid.Row="2" BorderBrush="LightGray" Margin="0,0,0,8"/>
+            <DataGrid Grid.Row="2" x:Name="ResultsDataGrid" ItemsSource="{Binding AccessibilityResults}" BorderBrush="LightGray" Margin="0,0,0,8"
+                      AutoGenerateColumns="False" FontSize="12" IsReadOnly="True">
+                <DataGrid.Resources>
+                    <Style TargetType="DataGrid">
+                        <Setter Property="HorizontalGridLinesBrush">
+                            <Setter.Value>
+                                <SolidColorBrush Color="LightGray"/>
+                            </Setter.Value>
+                        </Setter>
+                        <Setter Property="VerticalGridLinesBrush">
+                            <Setter.Value>
+                                <SolidColorBrush Color="LightGray"/>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                    <Style TargetType="DataGridRow">
+                        <Setter Property="Height" Value="24"/>
+                    </Style>
+                    <Style x:Key="CenteredTextBlockStyle" TargetType="{x:Type TextBlock}">
+                        <Setter Property="VerticalAlignment" Value="Center"/>
+                    </Style>
+                </DataGrid.Resources>
+                <DataGrid.Columns>
+                    <DataGridTextColumn Width="50" Binding="{Binding Id}" ElementStyle="{StaticResource CenteredTextBlockStyle}">
+                        <DataGridTextColumn.Header>
+                            <TextBlock Text="序号" FontSize="12"/>
+                        </DataGridTextColumn.Header>
+                    </DataGridTextColumn>
+                    <DataGridTextColumn Width="*" Binding="{Binding Target}" ElementStyle="{StaticResource CenteredTextBlockStyle}">
+                        <DataGridTextColumn.Header>
+                            <TextBlock Text="目标" FontSize="12"/>
+                        </DataGridTextColumn.Header>
+                    </DataGridTextColumn>
+                    <DataGridTextColumn Width="*" Binding="{Binding Url}" ElementStyle="{StaticResource CenteredTextBlockStyle}">
+                        <DataGridTextColumn.Header>
+                            <TextBlock Text="URL" FontSize="12"/>
+                        </DataGridTextColumn.Header>
+                    </DataGridTextColumn>
+                    <DataGridTemplateColumn Width="100">
+                        <DataGridTemplateColumn.Header>
+                            <TextBlock Text="访问状态" FontSize="12"/>
+                        </DataGridTemplateColumn.Header>
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding AccessStateDesc}" FontSize="12" VerticalAlignment="Center"
+                                           Foreground="{Binding Path=AccessStateDesc, Converter={StaticResource ColorConverter}}"/>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTextColumn Width="*" Binding="{Binding WebTitle}" ElementStyle="{StaticResource CenteredTextBlockStyle}">
+                        <DataGridTextColumn.Header>
+                            <TextBlock Text="网页标题" FontSize="12"/>
+                        </DataGridTextColumn.Header>
+                    </DataGridTextColumn>
+                </DataGrid.Columns>
+            </DataGrid>
             <StackPanel Grid.Row="3" Orientation="Horizontal">
                 <ui:Button Content="复制" BorderBrush="LightGray"/>
                 <ui:Button Content="导出" Margin="8,0,0,0" BorderBrush="LightGray"/>
