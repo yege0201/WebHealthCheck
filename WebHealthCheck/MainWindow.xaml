@@ -67,7 +67,7 @@
                         <ui:ToggleSwitch x:Name="ToggleCustomHeaders" OffContent="已禁用" OnContent="已启用" Margin="16,-8,0,0"/>
                     </StackPanel>
                     <ui:TextBox x:Name="CustomHeaders" IsEnabled="{Binding ElementName=ToggleCustomHeaders, Path=IsChecked, Mode=OneWay}" Height="72"
-                                PlaceholderText="示例：&#x0A;X-Forwarded-For: 127.0.0.1" FontSize="12"
+                                PlaceholderText="示例：&#x0A;X-Forwarded-For: 127.0.0.1&#x0A;Origin: localhost" FontSize="12"
                                 BorderBrush="LightGray" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" TextWrapping="Wrap"/>
                 </StackPanel>
 
@@ -98,13 +98,13 @@
                     <TextBlock Text="请选择请求方法" FontWeight="Bold" Margin="0,0,0,8"/>
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
                         <RadioButton x:Name="MethodGetRadioButton" Content="GET" IsChecked="True" GroupName="HttpMethod"/>
-                        <RadioButton x:Name="MethodPostRadioButton" Content="POST" GroupName="HttpMethod" IsEnabled="False" Visibility="Hidden"/>
+                        <RadioButton x:Name="MethodPostRadioButton" Content="POST" GroupName="HttpMethod"/>
                     </StackPanel>
                     <CheckBox x:Name="Checked301or302" Content="是否跟随 301/302 跳转" IsEnabled="False" Visibility="Hidden"/>
                 </StackPanel>
 
                 <!-- 任务配置 -->
-                <StackPanel Margin="0,0,0,16">
+                <StackPanel Margin="0,0,0,16" Visibility="Hidden">
                     <TextBlock Text="请选择线程数（尚未完成）" FontWeight="Bold" Margin="0,0,0,8"/>
                     <StackPanel Orientation="Horizontal">
                         <Slider x:Name="ThreadCount"
@@ -116,7 +116,7 @@
                                 Maximum="10"
                                 Minimum="1"
                                 TickPlacement="Both"
-                                Value="5" />
+                                Value="5"/>
                         <StackPanel Margin="12,-2,0,0" Orientation="Horizontal" VerticalAlignment="Center">
                             <TextBlock Text="线程数：" />
                             <TextBlock Text="{Binding ElementName=ThreadCount, Path=Value}" />
@@ -212,8 +212,8 @@
                 </DataGrid.Columns>
             </DataGrid>
             <StackPanel Grid.Row="3" Orientation="Horizontal">
-                <ui:Button Content="复制" BorderBrush="LightGray"/>
-                <ui:Button Content="导出" Margin="8,0,0,0" BorderBrush="LightGray"/>
+                <ui:Button x:Name="CopyToClipboardButton" Content="复制到剪贴板" BorderBrush="LightGray" Click="CopyToClipboardButton_Click"/>
+                <ui:Button x:Name="ExportToExcelButton" Content="导出为Excel" Margin="8,0,0,0" BorderBrush="LightGray" Visibility="Hidden"/>
             </StackPanel>
         </Grid>
     </Grid>

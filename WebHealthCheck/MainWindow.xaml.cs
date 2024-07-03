@@ -8,9 +8,9 @@ using WebHealthCheck.ViewModels;
 using HtmlAgilityPack;
 using System.Diagnostics;
 using System.Net.Http;
-using System.Windows.Controls.Primitives;
 using System.Globalization;
 using System.Windows.Data;
+using System.Text;
 
 namespace WebHealthCheck
 {
@@ -34,6 +34,7 @@ namespace WebHealthCheck
         private void ClearTargetsButton_Click(object sender, RoutedEventArgs e)
         {
             TargetsBox.Text = "";
+            MessageBox.Show("目标列表已清空");
         }
 
         private async void ImportFromFileButton_Click(object sender, RoutedEventArgs e)
@@ -54,6 +55,7 @@ namespace WebHealthCheck
                     case ".txt":
                         var targets = await LoadTargetsFromTextFileAsync(selectedFileName);
                         TargetsBox.Text = string.Join("\n", targets);
+                        MessageBox.Show("导入目标列表成功");
                         break;
                     default:
                         MessageBox.Show("暂时不支持此类型文件");
@@ -122,10 +124,13 @@ namespace WebHealthCheck
 
             _showDataViewModel.AccessibilityResults = [];
 
-            var checkHealthArgs = new object[3];
+            var customAttrs = LoadHttpCustomAttributes();
+
+            var checkHealthArgs = new object[4];
             checkHealthArgs[0] = int.Parse(TotalCount.Text);
             checkHealthArgs[1] = TargetsBox.Text.Split("\n");
             checkHealthArgs[2] = GetHttpMethod();
+            checkHealthArgs[3] = customAttrs;
 
             _checkHealthWorker.RunWorkerAsync(checkHealthArgs);
         }
@@ -147,7 +152,7 @@ namespace WebHealthCheck
             ToggleCustomUA.IsChecked = false;
 
             // 重置请求方法
-            MethodGetRadioButton.IsChecked = false;
+            MethodGetRadioButton.IsChecked = true;
             MethodPostRadioButton.IsChecked = false;
             Checked301or302.IsChecked = false;
 
@@ -156,6 +161,45 @@ namespace WebHealthCheck
             TotalCount.Text = "0";
 
             // 重置结果列表
+        }
+
+        private void CopyToClipboardButton_Click(object sender, RoutedEventArgs e)
+        {
+            var clipboardText = new StringBuilder();
+
+            // 获取列标题
+            foreach (var column in ResultsDataGrid.Columns)
+            {
+                if (column.Header is TextBlock headerTextBlock)
+                {
+                    clipboardText.Append(headerTextBlock.Text + "\t");
+                }
+                else
+                {
+                    clipboardText.Append(column.Header.ToString() + "\t");
+                }
+            }
+            clipboardText.AppendLine();
+
+            // 获取行数据
+            foreach (var item in ResultsDataGrid.Items)
+            {
+                var row = ResultsDataGrid.ItemContainerGenerator.ContainerFromItem(item) as DataGridRow;
+                if (row != null)
+                {
+                    foreach (var column in ResultsDataGrid.Columns)
+                    {
+                        if (column.GetCellContent(row) is TextBlock cellContent)
+                        {
+                            clipboardText.Append(cellContent.Text + "\t");
+                        }
+                    }
+                    clipboardText.AppendLine();
+                }
+            }
+
+            Clipboard.SetText(clipboardText.ToString());
+            MessageBox.Show("结果列表已复制到剪贴板");
         }
 
         private void InitCheckHealthBackgroundWorker()
@@ -175,6 +219,7 @@ namespace WebHealthCheck
             var totalCount = (int)receivedArgs[0];
             var targets = (string[])receivedArgs[1];
             var httpMethod = (string)receivedArgs[2];
+            var customAttrs = (string[])receivedArgs[3];
 
             if (totalCount < 1)
             {
@@ -187,7 +232,7 @@ namespace WebHealthCheck
             {
                 var work = new Cancel_CheckHealth(CheckTargetHealth);
                 var target = targets[i].Trim();
-                var task = Task.Run(() => work.Invoke(httpMethod, target));
+                var task = Task.Run(() => work.Invoke(httpMethod, target, customAttrs[0], customAttrs[1], customAttrs[2]));
                 while (!task.IsCompleted)
                 {
                     //没完成
@@ -233,11 +278,11 @@ namespace WebHealthCheck
         {
             if (e.Cancelled)
             {
-                MessageBox.Show("已取消操作！");
+                MessageBox.Show("任务已停止");
             }
             else if (e.Error != null)
             {
-                MessageBox.Show("出现错误！");
+                MessageBox.Show("任务出现错误");
             }
             else
             {
@@ -248,15 +293,17 @@ namespace WebHealthCheck
             }
         }
 
-        private delegate object[] Cancel_CheckHealth(string httpMethord, string target);
+        private delegate object[] Cancel_CheckHealth(string httpMethord, string target, string customHeaders, string customCookies, string customUA);
 
-        private object[] CheckTargetHealth(string httpMethord, string target)
+        private object[] CheckTargetHealth(string httpMethord, string target, string customHeaders, string customCookies, string customUA)
         {
             var handler = new HttpClientHandler();
             handler.ServerCertificateCustomValidationCallback = delegate { return true; };
             var httpClient = new HttpClient(handler);
             httpClient.Timeout = TimeSpan.FromSeconds(3);
             httpClient.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Edg/126.0.0.0");
+
+            UpdateHttpCustomAttributes(httpClient, customHeaders, customCookies, customUA);
 
             var htmlWeb = new HtmlWeb();
             var httpTargets = new List<string>();
@@ -356,6 +403,59 @@ namespace WebHealthCheck
             }
 
             return results;
+        }
+
+        private string[] LoadHttpCustomAttributes()
+        {
+            string[] customAttrs = {"", "", ""};
+
+            if ((bool)ToggleCustomHeaders.IsChecked)
+            {
+                var customHeaders = CustomHeaders.Text;
+                customAttrs[0] = customHeaders;
+            }
+
+            if ((bool)ToggleCustomCookies.IsChecked)
+            {
+                var customCookies = CustomCookies.Text;
+                customAttrs[1] = customCookies;
+            }
+
+            if ((bool)ToggleCustomUA.IsChecked)
+            {
+                var customUA = CustomUA.Text;
+                customAttrs[2] = customUA;
+            }
+
+            return customAttrs;
+        }
+
+        private void UpdateHttpCustomAttributes(HttpClient httpClient, string customHeaders, string customCookies, string customUA)
+        {
+            Debug.WriteLine(customHeaders);
+            Debug.WriteLine(customCookies);
+            Debug.WriteLine(customUA);
+            if (!string.IsNullOrWhiteSpace(customHeaders))
+            {
+                var customHeaderArray = customHeaders.Split("\n");
+
+                foreach (var customHeader in customHeaderArray)
+                {
+                    var headerPair = customHeader.Split(":");
+                    httpClient.DefaultRequestHeaders.Add(headerPair[0].Trim(), headerPair[1].Trim());
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(customCookies))
+            {
+                httpClient.DefaultRequestHeaders.Add("Cookie", customCookies);
+            }
+
+            if (!string.IsNullOrWhiteSpace(customUA))
+            {
+                httpClient.DefaultRequestHeaders.UserAgent.Clear();
+                httpClient.DefaultRequestHeaders.Add("User-Agent", customUA);
+            }
         }
     }
 
