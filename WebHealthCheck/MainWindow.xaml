@@ -8,8 +8,8 @@
         xmlns:vm="clr-namespace:WebHealthCheck.ViewModels"
         mc:Ignorable="d"
         Title="网站可访问性检查工具"
-        MinHeight="660" MinWidth="1280"
-        Height="660" Width="1280"
+        MinHeight="720" MinWidth="1280"
+        Height="720" Width="1280"
         Icon="Resources/logo.ico">
     <Window.DataContext>
         <vm:ShowDataViewModel/>
@@ -100,11 +100,31 @@
                         <RadioButton x:Name="MethodGetRadioButton" Content="GET" IsChecked="True" GroupName="HttpMethod"/>
                         <RadioButton x:Name="MethodPostRadioButton" Content="POST" GroupName="HttpMethod"/>
                     </StackPanel>
-                    <CheckBox x:Name="Checked301or302" Content="是否跟随 301/302 跳转" IsEnabled="False" Visibility="Hidden"/>
+                    <CheckBox x:Name="Checked301or302" Content="是否跟随 301/302 跳转" Visibility="Collapsed"/>
+                </StackPanel>
+
+                <StackPanel Margin="0,0,0,16">
+                    <TextBlock Text="请求超时时间" FontWeight="Bold" Margin="0,0,0,8"/>
+                    <StackPanel Orientation="Horizontal">
+                        <Slider x:Name="RequestTimeout"
+                                Grid.Column="0"
+                                Width="180"
+                                HorizontalAlignment="Left"
+                                VerticalAlignment="Center"
+                                IsSnapToTickEnabled="True"
+                                Maximum="10"
+                                Minimum="1"
+                                TickPlacement="Both"
+                                Value="3"/>
+                        <StackPanel Margin="12,-2,0,0" Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding ElementName=RequestTimeout, Path=Value}" />
+                            <TextBlock Text=" 秒" />
+                        </StackPanel>
+                    </StackPanel>
                 </StackPanel>
 
                 <!-- 任务配置 -->
-                <StackPanel Margin="0,0,0,16" Visibility="Hidden">
+                <StackPanel Margin="0,0,0,16" Visibility="Collapsed">
                     <TextBlock Text="请选择线程数（尚未完成）" FontWeight="Bold" Margin="0,0,0,8"/>
                     <StackPanel Orientation="Horizontal">
                         <Slider x:Name="ThreadCount"

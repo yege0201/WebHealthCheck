@@ -11,6 +11,8 @@ using System.Net.Http;
 using System.Globalization;
 using System.Windows.Data;
 using System.Text;
+using WebHealthCheck.Models;
+using System.Web;
 
 namespace WebHealthCheck
 {
@@ -126,11 +128,12 @@ namespace WebHealthCheck
 
             var customAttrs = LoadHttpCustomAttributes();
 
-            var checkHealthArgs = new object[4];
+            var checkHealthArgs = new object[5];
             checkHealthArgs[0] = int.Parse(TotalCount.Text);
             checkHealthArgs[1] = TargetsBox.Text.Split("\n");
             checkHealthArgs[2] = GetHttpMethod();
             checkHealthArgs[3] = customAttrs;
+            checkHealthArgs[4] = RequestTimeout.Value;
 
             _checkHealthWorker.RunWorkerAsync(checkHealthArgs);
         }
@@ -182,20 +185,10 @@ namespace WebHealthCheck
             clipboardText.AppendLine();
 
             // 获取行数据
-            foreach (var item in ResultsDataGrid.Items)
+            foreach (var item in _showDataViewModel.AccessibilityResults)
             {
-                var row = ResultsDataGrid.ItemContainerGenerator.ContainerFromItem(item) as DataGridRow;
-                if (row != null)
-                {
-                    foreach (var column in ResultsDataGrid.Columns)
-                    {
-                        if (column.GetCellContent(row) is TextBlock cellContent)
-                        {
-                            clipboardText.Append(cellContent.Text + "\t");
-                        }
-                    }
-                    clipboardText.AppendLine();
-                }
+                clipboardText.Append(item.Id + "\t" + item.Target + "\t" + item.Url + "\t" + item.AccessStateDesc + "\t" + item.WebTitle);
+                clipboardText.AppendLine();
             }
 
             Clipboard.SetText(clipboardText.ToString());
@@ -220,6 +213,7 @@ namespace WebHealthCheck
             var targets = (string[])receivedArgs[1];
             var httpMethod = (string)receivedArgs[2];
             var customAttrs = (string[])receivedArgs[3];
+            var requestTimeout = (double)receivedArgs[4];
 
             if (totalCount < 1)
             {
@@ -232,7 +226,7 @@ namespace WebHealthCheck
             {
                 var work = new Cancel_CheckHealth(CheckTargetHealth);
                 var target = targets[i].Trim();
-                var task = Task.Run(() => work.Invoke(httpMethod, target, customAttrs[0], customAttrs[1], customAttrs[2]));
+                var task = Task.Run(() => work.Invoke(httpMethod, target, customAttrs[0], customAttrs[1], customAttrs[2], requestTimeout));
                 while (!task.IsCompleted)
                 {
                     //没完成
@@ -293,14 +287,14 @@ namespace WebHealthCheck
             }
         }
 
-        private delegate object[] Cancel_CheckHealth(string httpMethord, string target, string customHeaders, string customCookies, string customUA);
+        private delegate object[] Cancel_CheckHealth(string httpMethord, string target, string customHeaders, string customCookies, string customUA, double timeout);
 
-        private object[] CheckTargetHealth(string httpMethord, string target, string customHeaders, string customCookies, string customUA)
+        private object[] CheckTargetHealth(string httpMethord, string target, string customHeaders, string customCookies, string customUA, double timeout)
         {
             var handler = new HttpClientHandler();
             handler.ServerCertificateCustomValidationCallback = delegate { return true; };
             var httpClient = new HttpClient(handler);
-            httpClient.Timeout = TimeSpan.FromSeconds(3);
+            httpClient.Timeout = TimeSpan.FromSeconds(timeout);
             httpClient.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Edg/126.0.0.0");
 
             UpdateHttpCustomAttributes(httpClient, customHeaders, customCookies, customUA);
@@ -310,8 +304,8 @@ namespace WebHealthCheck
 
             if (!target.StartsWith("http"))
             {
-                httpTargets.Add($"http://{target}");
                 httpTargets.Add($"https://{target}");
+                httpTargets.Add($"http://{target}");
             }
             else
             {
@@ -341,8 +335,8 @@ namespace WebHealthCheck
                                 var node = htmlDoc.DocumentNode.SelectSingleNode("//head/title");
                                 if (node != null)
                                 {
-                                    title = node.InnerText;
-                                    results[2] = title;
+                                    title = HttpUtility.HtmlDecode(node.InnerText);
+                                    results[2] = title.Trim();
                                 }
                             }
                             catch (Exception)
@@ -382,8 +376,8 @@ namespace WebHealthCheck
                                 var node = htmlDoc.DocumentNode.SelectSingleNode("//head/title");
                                 if (node != null)
                                 {
-                                    title = node.InnerText;
-                                    results[2] = title;
+                                    title = HttpUtility.HtmlDecode(node.InnerText);
+                                    results[2] = title.Trim();
                                 }
                             }
                             catch (Exception)
@@ -405,9 +399,44 @@ namespace WebHealthCheck
             return results;
         }
 
+        private string GetHtmlEncoding(HtmlDocument htmlDoc)
+        {
+            var node = htmlDoc.DocumentNode.SelectSingleNode("//head/meta[@http-equiv=\"Content-Type\"]");
+            if (node == null)
+            {
+                return "UTF-8";
+            }
+            var attributeValue = node.GetAttributeValue("content", "text/html; charset=UTF-8");
+            var attributeValueSplit = attributeValue.Split(";");
+            foreach (var _value in attributeValueSplit)
+            {
+                var value = _value.Trim();
+                if (!value.Contains('='))
+                {
+                    continue;
+                }
+                var valueSlices = value.Split("=");
+                if (valueSlices[0].Equals("charset", StringComparison.OrdinalIgnoreCase))
+                {
+                    return valueSlices[1];
+                }
+            }
+            return "UTF-8";
+        }
+
+        public string ConvertToUTF8(string content, string fromCharset)
+        {
+            Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+            Encoding utf8 = Encoding.GetEncoding("utf-8");
+            Encoding encodingFromCharset = Encoding.GetEncoding(fromCharset);
+            byte[] result = encodingFromCharset.GetBytes(content);
+            result = Encoding.Convert(encodingFromCharset, utf8, result);
+            return utf8.GetString(result);
+        }
+
         private string[] LoadHttpCustomAttributes()
         {
-            string[] customAttrs = {"", "", ""};
+            string[] customAttrs = { "", "", "" };
 
             if ((bool)ToggleCustomHeaders.IsChecked)
             {
