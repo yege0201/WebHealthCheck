@@ -192,6 +192,16 @@
                     </Style>
                     <Style TargetType="DataGridRow">
                         <Setter Property="Height" Value="Auto"/>
+                        <Setter Property="MaxHeight" Value="180"/>
+                    </Style>
+                    <Style TargetType="DataGridCell">
+                        <Style.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter Property="Background" Value="#ECECEC"/>
+                                <Setter Property="BorderBrush" Value="#ECECEC"/>
+                                <Setter Property="Foreground" Value="Black"/>
+                            </Trigger>
+                        </Style.Triggers>
                     </Style>
                     <Style x:Key="CenteredTextBlockStyle" TargetType="{x:Type TextBlock}">
                         <Setter Property="VerticalAlignment" Value="Center"/>
@@ -229,11 +239,18 @@
                             <TextBlock Text="网页标题" FontSize="12"/>
                         </DataGridTextColumn.Header>
                     </DataGridTextColumn>
-                    <DataGridTextColumn Width="*" Binding="{Binding WebContent}" ElementStyle="{StaticResource CenteredTextBlockStyle}">
-                        <DataGridTextColumn.Header>
+                    <DataGridTemplateColumn Width="*">
+                        <DataGridTemplateColumn.Header>
                             <TextBlock Text="网页内容" FontSize="12"/>
-                        </DataGridTextColumn.Header>
-                    </DataGridTextColumn>
+                        </DataGridTemplateColumn.Header>
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                    <TextBlock Text="{Binding WebContent}" FontSize="12" VerticalAlignment="Top"/>
+                                </ScrollViewer>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
                 </DataGrid.Columns>
             </DataGrid>
             <StackPanel Grid.Row="3" Orientation="Horizontal">

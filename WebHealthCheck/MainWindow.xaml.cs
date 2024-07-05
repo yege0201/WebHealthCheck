@@ -135,6 +135,8 @@ namespace WebHealthCheck
             var requestTimeout = RequestTimeout.Value;
             var threadCount = (int)ThreadCount.Value;
 
+            TargetsBox.Text = string.Join("\n", targets);
+
             Semaphore = new SemaphoreSlim(threadCount);
 
             _checkHealthBackgroundWorker = new BackgroundWorker
@@ -355,16 +357,17 @@ namespace WebHealthCheck
                     var response = await httpClient.SendAsync(request, token);
                     result.Url = url;
                     result.State = "稳定访问(1/1)";
+
+                    var content = await response.Content.ReadAsStringAsync(token);
+                    result.WebContent = content.Trim();
                     try
                     {
-                        var content = await response.Content.ReadAsStringAsync(token);
                         var htmlDoc = new HtmlDocument();
                         htmlDoc.LoadHtml(content);
                         var node = htmlDoc.DocumentNode.SelectSingleNode("//head/title");
                         if (node != null)
                         {
                             result.WebTitle = HttpUtility.HtmlDecode(node.InnerText).Trim();
-                            result.WebContent = content;
                         }
                     }
                     catch (Exception)
