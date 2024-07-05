@@ -115,7 +115,7 @@
                                 Maximum="10"
                                 Minimum="1"
                                 TickPlacement="Both"
-                                Value="3"/>
+                                Value="5"/>
                         <StackPanel Margin="12,-2,0,0" Orientation="Horizontal" VerticalAlignment="Center">
                             <TextBlock Text="{Binding ElementName=RequestTimeout, Path=Value}" />
                             <TextBlock Text=" 秒" />
@@ -124,8 +124,8 @@
                 </StackPanel>
 
                 <!-- 任务配置 -->
-                <StackPanel Margin="0,0,0,16" Visibility="Collapsed">
-                    <TextBlock Text="请选择线程数（尚未完成）" FontWeight="Bold" Margin="0,0,0,8"/>
+                <StackPanel Margin="0,0,0,16">
+                    <TextBlock Text="请选择线程数" FontWeight="Bold" Margin="0,0,0,8"/>
                     <StackPanel Orientation="Horizontal">
                         <Slider x:Name="ThreadCount"
                                 Grid.Column="0"

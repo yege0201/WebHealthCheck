@@ -13,6 +13,10 @@ using System.Windows.Data;
 using System.Text;
 using WebHealthCheck.Models;
 using System.Web;
+using System.Security.Policy;
+using System.Threading;
+using System.Collections.Concurrent;
+using System;
 
 namespace WebHealthCheck
 {
@@ -21,27 +25,22 @@ namespace WebHealthCheck
     /// </summary>
     public partial class MainWindow : Window
     {
-        private ShowDataViewModel _showDataViewModel;
-        private BackgroundWorker _checkHealthWorker;
+        private readonly ShowDataViewModel _showDataViewModel;
+
+        private SemaphoreSlim Semaphore;
+        private BackgroundWorker _checkHealthBackgroundWorker;
+        private CancellationTokenSource _checkHealthCancellationTokenSource;
 
         public MainWindow()
         {
             InitializeComponent();
 
-            InitCheckHealthBackgroundWorker();
-
             DataContext = _showDataViewModel = new ShowDataViewModel();
-        }
-
-        private void ClearTargetsButton_Click(object sender, RoutedEventArgs e)
-        {
-            TargetsBox.Text = "";
-            MessageBox.Show("目标列表已清空");
         }
 
         private async void ImportFromFileButton_Click(object sender, RoutedEventArgs e)
         {
-            OpenFileDialog openFileDialog = new OpenFileDialog
+            var openFileDialog = new OpenFileDialog
             {
                 Filter = "文本文件 (*.txt)|*.txt|所有文件 (*.*)|*.*" // 设置文件筛选器，这里设置为显示所有文件
             };
@@ -66,6 +65,12 @@ namespace WebHealthCheck
             }
         }
 
+        private void ClearTargetsButton_Click(object sender, RoutedEventArgs e)
+        {
+            TargetsBox.Text = "";
+            MessageBox.Show("目标列表已清空");
+        }
+
         private async Task<string> ReadTextFileAsync(string filePath)
         {
             using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read);
@@ -79,7 +84,7 @@ namespace WebHealthCheck
             return fileContent;
         }
 
-        private void ProcessTargets()
+        private List<string> GetTargets()
         {
             var targets = new List<string>();
             var validCount = 0;
@@ -89,27 +94,29 @@ namespace WebHealthCheck
 
             foreach (var target in targetArray)
             {
-                if (string.IsNullOrEmpty(target))
+                if (string.IsNullOrEmpty(target.Trim()))
                 {
                     emptyCount++;
                     continue;
                 }
-                targets.Add(target);
                 validCount++;
+                targets.Add(target.Trim());
             }
 
             TotalCount.Text = validCount.ToString();
 
             MessageBox.Show($"获取到有效目标 {validCount} 个，空行 {emptyCount} 个。");
+
+            return targets;
         }
 
         private string GetHttpMethod()
         {
-            if ((bool)MethodGetRadioButton.IsChecked)
+            if (MethodGetRadioButton.IsChecked == true)
             {
                 return "GET";
             }
-            else if ((bool)MethodPostRadioButton.IsChecked)
+            else if (MethodPostRadioButton.IsChecked == true)
             {
                 return "POST";
             }
@@ -122,25 +129,133 @@ namespace WebHealthCheck
             StopButton.IsEnabled = true;
             ResetButton.IsEnabled = false;
 
-            this.ProcessTargets();
-
             _showDataViewModel.AccessibilityResults = [];
 
-            var customAttrs = LoadHttpCustomAttributes();
+            var targets = GetTargets();
+            var httpMethod = GetHttpMethod();
+            var httpCustomAttrs = GetHttpCustomAttributes();
+            var requestTimeout = RequestTimeout.Value;
+            var threadCount = (int)ThreadCount.Value;
 
-            var checkHealthArgs = new object[5];
-            checkHealthArgs[0] = int.Parse(TotalCount.Text);
-            checkHealthArgs[1] = TargetsBox.Text.Split("\n");
-            checkHealthArgs[2] = GetHttpMethod();
-            checkHealthArgs[3] = customAttrs;
-            checkHealthArgs[4] = RequestTimeout.Value;
+            Semaphore = new SemaphoreSlim(threadCount);
 
-            _checkHealthWorker.RunWorkerAsync(checkHealthArgs);
+            _checkHealthBackgroundWorker = new BackgroundWorker
+            {
+                WorkerSupportsCancellation = true,
+                WorkerReportsProgress = true
+            };
+            _checkHealthBackgroundWorker.DoWork += CheckHealthBackgroundWorker_DoWork;
+            _checkHealthBackgroundWorker.ProgressChanged += CheckHealthBackgroundWorker_ProgressChanged;
+            _checkHealthBackgroundWorker.RunWorkerCompleted += CheckHealthBackgroundWorker_RunWorkerCompleted;
+            _checkHealthCancellationTokenSource = new CancellationTokenSource();
+            _checkHealthBackgroundWorker.RunWorkerAsync(new { targets, httpMethod, httpCustomAttrs, requestTimeout, token = _checkHealthCancellationTokenSource.Token });
+        }
+
+        private void CheckHealthBackgroundWorker_DoWork(object? sender, DoWorkEventArgs e)
+        {
+            var arg = e.Argument as dynamic;
+            if (arg == null) return;
+
+            var targets = (List<string>)arg.targets;
+            var httpMethod = (string)arg.httpMethod;
+            var httpCustomAttrs = (HttpCustomAtrributes)arg.httpCustomAttrs;
+            var requestTimeout = (double)arg.requestTimeout;
+            var token = (CancellationToken)arg.token;
+
+            if (targets.Count < 1)
+            {
+                _checkHealthBackgroundWorker.ReportProgress(-1);
+                return;
+            }
+
+            var tasks = new List<Task>();
+
+            foreach (var target in targets.Select((value, index) => new { value, index }))
+            {
+                if (_checkHealthBackgroundWorker.CancellationPending)
+                {
+                    e.Cancel = true;
+                    break;
+                }
+
+                tasks.Add(Task.Run(async () =>
+                {
+                    await Semaphore.WaitAsync(token);
+                    try
+                    {
+                        var result = await CheckTargetHealthAsync(target.value, httpMethod, httpCustomAttrs.CustomHeaders, httpCustomAttrs.CustomCookies, httpCustomAttrs.CustomUA, requestTimeout, token);
+                        var accessibilityResult = new Models.AccessibilityResult()
+                        {
+                            Id = target.index + 1,
+                            Target = target.value,
+                            Url = result.Url,
+                            AccessStateDesc = result.State,
+                            WebTitle = result.WebTitle,
+                            WebContent = ""
+                        };
+                        _checkHealthBackgroundWorker.ReportProgress(accessibilityResult.Id, accessibilityResult);
+                    }
+                    finally
+                    {
+                        Semaphore.Release();
+                    }
+                }, token));
+            }
+
+            try
+            {
+                Task.WhenAll(tasks).Wait(token);
+            }
+            catch (OperationCanceledException)
+            {
+                e.Cancel = true;
+            }
+        }
+
+        private void CheckHealthBackgroundWorker_ProgressChanged(object? sender, ProgressChangedEventArgs e)
+        {
+            if (e.ProgressPercentage == -1)
+            {
+                MessageBox.Show("目标为空，请确认已添加目标");
+                return;
+            }
+
+            if (e.UserState is not Models.AccessibilityResult result) return;
+            var index = GetTargetIndexFromAccessibilityResults(result);
+            _showDataViewModel.AccessibilityResults.Insert(index, result);
+
+            CurrentCount.Text = _showDataViewModel.AccessibilityResults.Count.ToString();
+            ProgressBar.Value = _showDataViewModel.AccessibilityResults.Count;
+        }
+
+        private void CheckHealthBackgroundWorker_RunWorkerCompleted(object? sender, RunWorkerCompletedEventArgs e)
+        {
+            if (e.Cancelled)
+            {
+                MessageBox.Show("任务已取消");
+            }
+            else if (e.Error != null)
+            {
+                MessageBox.Show($"任务发生错误: {e.Error.Message}");
+            }
+            else
+            {
+                MessageBox.Show("任务已完成");
+
+                // 重置任务操作按钮
+                StartButton.IsEnabled = true;
+                StopButton.IsEnabled = false;
+                ResetButton.IsEnabled = true;
+            }
         }
 
         private void StopButton_Click(object sender, RoutedEventArgs e)
         {
-            _checkHealthWorker.CancelAsync();
+            if (_checkHealthBackgroundWorker != null && _checkHealthBackgroundWorker.IsBusy)
+            {
+                _checkHealthBackgroundWorker.CancelAsync();
+                _checkHealthCancellationTokenSource.Cancel();
+            }
 
             StartButton.IsEnabled = true;
             StopButton.IsEnabled = false;
@@ -162,8 +277,7 @@ namespace WebHealthCheck
             // 重置任务进度
             CurrentCount.Text = "0";
             TotalCount.Text = "0";
-
-            // 重置结果列表
+            ProgressBar.Value = 0;
         }
 
         private void CopyToClipboardButton_Click(object sender, RoutedEventArgs e)
@@ -195,208 +309,92 @@ namespace WebHealthCheck
             MessageBox.Show("结果列表已复制到剪贴板");
         }
 
-        private void InitCheckHealthBackgroundWorker()
+        private async Task<CheckHealthResult> CheckTargetHealthAsync(string target, string httpMethod, string customHeaders, string customCookies, string customUA, double requestTimeout, CancellationToken token)
         {
-            _checkHealthWorker ??= new BackgroundWorker();
-
-            _checkHealthWorker.WorkerReportsProgress = true;
-            _checkHealthWorker.WorkerSupportsCancellation = true;
-            _checkHealthWorker.DoWork += new DoWorkEventHandler(CheckHealthWorker_DoWork);
-            _checkHealthWorker.ProgressChanged += new ProgressChangedEventHandler(CheckHealthWorker_ProgressChanged);
-            _checkHealthWorker.RunWorkerCompleted += new RunWorkerCompletedEventHandler(CheckHealthWorker_RunWorkerCompleted);
-        }
-
-        private void CheckHealthWorker_DoWork(object sender, DoWorkEventArgs e)
-        {
-            var receivedArgs = e.Argument as object[];
-            var totalCount = (int)receivedArgs[0];
-            var targets = (string[])receivedArgs[1];
-            var httpMethod = (string)receivedArgs[2];
-            var customAttrs = (string[])receivedArgs[3];
-            var requestTimeout = (double)receivedArgs[4];
-
-            if (totalCount < 1)
+            var urls = new List<string>();
+            if (target.StartsWith("http", StringComparison.OrdinalIgnoreCase))
             {
-                _checkHealthWorker.ReportProgress(-1);
-                return;
+                urls.Add(target);
+            }
+            else
+            {
+                urls.Add($"https://{target}");
+                urls.Add($"http://{target}");
             }
 
-            // 耗时操作
-            for (var i = 0; i < totalCount; i++)
-            {
-                var work = new Cancel_CheckHealth(CheckTargetHealth);
-                var target = targets[i].Trim();
-                var task = Task.Run(() => work.Invoke(httpMethod, target, customAttrs[0], customAttrs[1], customAttrs[2], requestTimeout));
-                while (!task.IsCompleted)
-                {
-                    //没完成
-                    //判断是否取消了backgroundworker异步操作
-                    if (_checkHealthWorker.CancellationPending)
-                    {
-                        //如何是  马上取消backgroundwork操作(这个地方才是真正取消) 
-                        e.Cancel = true;
-                        return;
-                    }
-                }
+            var result = new CheckHealthResult();
 
-                var results = task.Result;
-                var accessibilityResult = new Models.AccessibilityResult()
+            foreach (var url in urls)
+            {
+                var handler = new HttpClientHandler
                 {
-                    Id = i + 1,
-                    Target = target,
-                    Url = (string)results[0],
-                    AccessStateDesc = (string)results[1],
-                    WebTitle = (string)results[2]
+                    ServerCertificateCustomValidationCallback = delegate { return true; }
                 };
-                _checkHealthWorker.ReportProgress(i + 1, accessibilityResult);
-            }
 
-            e.Result = true;
-        }
+                using var httpClient = new HttpClient(handler);
+                httpClient.Timeout = TimeSpan.FromSeconds(requestTimeout);
 
-        private void CheckHealthWorker_ProgressChanged(object sender, ProgressChangedEventArgs e)
-        {
-            if (e.ProgressPercentage == -1)
-            {
-                MessageBox.Show("目标为空，请确认已添加目标");
-                return;
-            }
-            CurrentCount.Text = e.ProgressPercentage.ToString();
-            ProgressBar.Value = e.ProgressPercentage;
-            var result = (Models.AccessibilityResult)e.UserState;
-            if (result == null) return;
-            _showDataViewModel.AccessibilityResults.Add(result);
-        }
+                UpdateHttpCustomAttributes(httpClient, customHeaders, customCookies, customUA);
 
-        private void CheckHealthWorker_RunWorkerCompleted(object sender, RunWorkerCompletedEventArgs e)
-        {
-            if (e.Cancelled)
-            {
-                MessageBox.Show("任务已停止");
-            }
-            else if (e.Error != null)
-            {
-                MessageBox.Show("任务出现错误");
-            }
-            else
-            {
-                // 更新UI或执行其他UI相关操作
-                StartButton.IsEnabled = true;
-                StopButton.IsEnabled = false;
-                ResetButton.IsEnabled = true;
-            }
-        }
+                var request = new HttpRequestMessage();
 
-        private delegate object[] Cancel_CheckHealth(string httpMethord, string target, string customHeaders, string customCookies, string customUA, double timeout);
-
-        private object[] CheckTargetHealth(string httpMethord, string target, string customHeaders, string customCookies, string customUA, double timeout)
-        {
-            var handler = new HttpClientHandler();
-            handler.ServerCertificateCustomValidationCallback = delegate { return true; };
-            var httpClient = new HttpClient(handler);
-            httpClient.Timeout = TimeSpan.FromSeconds(timeout);
-            httpClient.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Edg/126.0.0.0");
-
-            UpdateHttpCustomAttributes(httpClient, customHeaders, customCookies, customUA);
-
-            var htmlWeb = new HtmlWeb();
-            var httpTargets = new List<string>();
-
-            if (!target.StartsWith("http"))
-            {
-                httpTargets.Add($"https://{target}");
-                httpTargets.Add($"http://{target}");
-            }
-            else
-            {
-                httpTargets.Add(target);
-            }
-
-            object[] results = { "无", "无法访问(0/1)", "N/A" };
-            if (httpMethord.Equals("GET", StringComparison.OrdinalIgnoreCase))
-            {
-                foreach (var httpTarget in httpTargets)
+                if (httpMethod.Equals("GET", StringComparison.OrdinalIgnoreCase))
                 {
+                    request.Method = HttpMethod.Get;
+                }
+                else if (httpMethod.Equals("POST", StringComparison.OrdinalIgnoreCase))
+                {
+                    request.Method = HttpMethod.Post;
+                }
+                else
+                {
+                    request.Method = HttpMethod.Get;
+                }
+
+                try
+                {
+                    request.RequestUri = new Uri(url);
+                    var response = await httpClient.SendAsync(request, token);
+                    result.Url = url;
+                    result.State = "稳定访问(1/1)";
                     try
                     {
-                        var title = "N/A";
-                        try
+                        var content = await response.Content.ReadAsStringAsync(token);
+                        var htmlDoc = new HtmlDocument();
+                        htmlDoc.LoadHtml(content);
+                        var node = htmlDoc.DocumentNode.SelectSingleNode("//head/title");
+                        if (node != null)
                         {
-                            results[0] = httpTarget;
-
-                            var response = httpClient.GetAsync(httpTarget).Result;
-                            results[1] = "稳定访问(1/1)";
-
-                            try
-                            {
-                                var content = response.Content.ReadAsStringAsync().Result;
-                                var htmlDoc = new HtmlDocument();
-                                htmlDoc.LoadHtml(content);
-                                var node = htmlDoc.DocumentNode.SelectSingleNode("//head/title");
-                                if (node != null)
-                                {
-                                    title = HttpUtility.HtmlDecode(node.InnerText);
-                                    results[2] = title.Trim();
-                                }
-                            }
-                            catch (Exception)
-                            {
-                            }
-                            return results;
-                        }
-                        catch (Exception)
-                        {
+                            result.WebTitle = HttpUtility.HtmlDecode(node.InnerText).Trim();
                         }
                     }
                     catch (Exception)
                     {
-                        continue;
                     }
+                    Debug.WriteLine($"请求 {url} 成功");
+                    return result;
                 }
-            }
-            else if (httpMethord.Equals("POST", StringComparison.OrdinalIgnoreCase))
-            {
-                foreach (var httpTarget in httpTargets)
+                catch (OperationCanceledException)
                 {
-                    try
-                    {
-                        var title = "N/A";
-                        try
-                        {
-                            results[0] = httpTarget;
-
-                            var response = httpClient.PostAsync(httpTarget, null).Result;
-                            results[1] = "稳定访问(1/1)";
-
-                            try
-                            {
-                                var content = response.Content.ReadAsStringAsync().Result;
-                                var htmlDoc = new HtmlDocument();
-                                htmlDoc.LoadHtml(content);
-                                var node = htmlDoc.DocumentNode.SelectSingleNode("//head/title");
-                                if (node != null)
-                                {
-                                    title = HttpUtility.HtmlDecode(node.InnerText);
-                                    results[2] = title.Trim();
-                                }
-                            }
-                            catch (Exception)
-                            {
-                            }
-                            return results;
-                        }
-                        catch (Exception)
-                        {
-                        }
-                    }
-                    catch (Exception)
-                    {
-                        continue;
-                    }
+                    Debug.WriteLine($"请求 {url} 被取消");
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"请求 {url} 时发生错误: {ex.Message}");
                 }
             }
 
-            return results;
+            return result;
+        }
+
+        private int GetTargetIndexFromAccessibilityResults(AccessibilityResult result)
+        {
+            if (_showDataViewModel.AccessibilityResults.Count == 0) return 0;
+            for (int i = 0; i < _showDataViewModel.AccessibilityResults.Count; i++)
+            {
+                if (result.Id < _showDataViewModel.AccessibilityResults[i].Id) return i;
+            }
+            return _showDataViewModel.AccessibilityResults.Count;
         }
 
         private string GetHtmlEncoding(HtmlDocument htmlDoc)
@@ -434,26 +432,21 @@ namespace WebHealthCheck
             return utf8.GetString(result);
         }
 
-        private string[] LoadHttpCustomAttributes()
+        private HttpCustomAtrributes GetHttpCustomAttributes()
         {
-            string[] customAttrs = { "", "", "" };
+            var customAttrs = new HttpCustomAtrributes();
 
-            if ((bool)ToggleCustomHeaders.IsChecked)
+            if (ToggleCustomHeaders.IsChecked == true)
             {
-                var customHeaders = CustomHeaders.Text;
-                customAttrs[0] = customHeaders;
+                customAttrs.CustomHeaders = CustomHeaders.Text.Trim();
             }
-
-            if ((bool)ToggleCustomCookies.IsChecked)
+            if (ToggleCustomCookies.IsChecked == true)
             {
-                var customCookies = CustomCookies.Text;
-                customAttrs[1] = customCookies;
+                customAttrs.CustomCookies = CustomCookies.Text.Trim();
             }
-
-            if ((bool)ToggleCustomUA.IsChecked)
+            if (ToggleCustomUA.IsChecked == true)
             {
-                var customUA = CustomUA.Text;
-                customAttrs[2] = customUA;
+                customAttrs.CustomUA = CustomUA.Text.Trim();
             }
 
             return customAttrs;
@@ -461,9 +454,6 @@ namespace WebHealthCheck
 
         private void UpdateHttpCustomAttributes(HttpClient httpClient, string customHeaders, string customCookies, string customUA)
         {
-            Debug.WriteLine(customHeaders);
-            Debug.WriteLine(customCookies);
-            Debug.WriteLine(customUA);
             if (!string.IsNullOrWhiteSpace(customHeaders))
             {
                 var customHeaderArray = customHeaders.Split("\n");
@@ -487,8 +477,6 @@ namespace WebHealthCheck
             }
         }
     }
-
-
 
     [ValueConversion(typeof(string), typeof(string))]
     class ColorConverter : IValueConverter
@@ -516,5 +504,20 @@ namespace WebHealthCheck
         {
             return "";
         }
+    }
+
+    public class HttpCustomAtrributes
+    {
+        public string CustomHeaders { get; set; } = "";
+        public string CustomCookies { get; set; } = "";
+        public string CustomUA { get; set; } = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Edg/126.0.0.0";
+    }
+
+    public class CheckHealthResult
+    {
+        public string Url { get; set; } = "无";
+        public string State { get; set; } = "无法访问(1/1)";
+        public string WebTitle { get; set; } = "";
+        public string WebContent { get; set; } = "";
     }
 }

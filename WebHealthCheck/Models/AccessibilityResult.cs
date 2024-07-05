@@ -22,6 +22,9 @@ namespace WebHealthCheck.Models
         public required string AccessStateDesc { get; set; }
 
         // 网页标题
-        public string? WebTitle { get; set; }
+        public required string WebTitle { get; set; }
+
+        // 网页内容
+        public required string WebContent { get; set; }
     }
 }
