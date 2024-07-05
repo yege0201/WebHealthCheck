@@ -191,7 +191,7 @@
                         </Setter>
                     </Style>
                     <Style TargetType="DataGridRow">
-                        <Setter Property="Height" Value="24"/>
+                        <Setter Property="Height" Value="Auto"/>
                     </Style>
                     <Style x:Key="CenteredTextBlockStyle" TargetType="{x:Type TextBlock}">
                         <Setter Property="VerticalAlignment" Value="Center"/>
@@ -227,6 +227,11 @@
                     <DataGridTextColumn Width="*" Binding="{Binding WebTitle}" ElementStyle="{StaticResource CenteredTextBlockStyle}">
                         <DataGridTextColumn.Header>
                             <TextBlock Text="网页标题" FontSize="12"/>
+                        </DataGridTextColumn.Header>
+                    </DataGridTextColumn>
+                    <DataGridTextColumn Width="*" Binding="{Binding WebContent}" ElementStyle="{StaticResource CenteredTextBlockStyle}">
+                        <DataGridTextColumn.Header>
+                            <TextBlock Text="网页内容" FontSize="12"/>
                         </DataGridTextColumn.Header>
                     </DataGridTextColumn>
                 </DataGrid.Columns>

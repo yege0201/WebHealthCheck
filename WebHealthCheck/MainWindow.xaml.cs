@@ -3,20 +3,18 @@ using System.ComponentModel;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
-using WebHealthCheck.ViewModels;
-
-using HtmlAgilityPack;
 using System.Diagnostics;
 using System.Net.Http;
 using System.Globalization;
 using System.Windows.Data;
 using System.Text;
-using WebHealthCheck.Models;
 using System.Web;
-using System.Security.Policy;
-using System.Threading;
-using System.Collections.Concurrent;
-using System;
+
+using HtmlAgilityPack;
+
+using WebHealthCheck.Models;
+using WebHealthCheck.ViewModels;
+
 
 namespace WebHealthCheck
 {
@@ -191,7 +189,7 @@ namespace WebHealthCheck
                             Url = result.Url,
                             AccessStateDesc = result.State,
                             WebTitle = result.WebTitle,
-                            WebContent = ""
+                            WebContent = result.WebContent,
                         };
                         _checkHealthBackgroundWorker.ReportProgress(accessibilityResult.Id, accessibilityResult);
                     }
@@ -301,7 +299,7 @@ namespace WebHealthCheck
             // 获取行数据
             foreach (var item in _showDataViewModel.AccessibilityResults)
             {
-                clipboardText.Append(item.Id + "\t" + item.Target + "\t" + item.Url + "\t" + item.AccessStateDesc + "\t" + item.WebTitle);
+                clipboardText.Append(item.Id + "\t" + item.Target + "\t" + item.Url + "\t" + item.AccessStateDesc + "\t" + item.WebTitle + "\t" + item.WebContent);
                 clipboardText.AppendLine();
             }
 
@@ -366,6 +364,7 @@ namespace WebHealthCheck
                         if (node != null)
                         {
                             result.WebTitle = HttpUtility.HtmlDecode(node.InnerText).Trim();
+                            result.WebContent = content;
                         }
                     }
                     catch (Exception)
@@ -395,41 +394,6 @@ namespace WebHealthCheck
                 if (result.Id < _showDataViewModel.AccessibilityResults[i].Id) return i;
             }
             return _showDataViewModel.AccessibilityResults.Count;
-        }
-
-        private string GetHtmlEncoding(HtmlDocument htmlDoc)
-        {
-            var node = htmlDoc.DocumentNode.SelectSingleNode("//head/meta[@http-equiv=\"Content-Type\"]");
-            if (node == null)
-            {
-                return "UTF-8";
-            }
-            var attributeValue = node.GetAttributeValue("content", "text/html; charset=UTF-8");
-            var attributeValueSplit = attributeValue.Split(";");
-            foreach (var _value in attributeValueSplit)
-            {
-                var value = _value.Trim();
-                if (!value.Contains('='))
-                {
-                    continue;
-                }
-                var valueSlices = value.Split("=");
-                if (valueSlices[0].Equals("charset", StringComparison.OrdinalIgnoreCase))
-                {
-                    return valueSlices[1];
-                }
-            }
-            return "UTF-8";
-        }
-
-        public string ConvertToUTF8(string content, string fromCharset)
-        {
-            Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
-            Encoding utf8 = Encoding.GetEncoding("utf-8");
-            Encoding encodingFromCharset = Encoding.GetEncoding(fromCharset);
-            byte[] result = encodingFromCharset.GetBytes(content);
-            result = Encoding.Convert(encodingFromCharset, utf8, result);
-            return utf8.GetString(result);
         }
 
         private HttpCustomAtrributes GetHttpCustomAttributes()
