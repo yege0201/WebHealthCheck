@@ -173,6 +173,10 @@
                     <TextBlock x:Name="TotalCount" Text="0"/>
                 </StackPanel>
                 <ProgressBar x:Name="ProgressBar" Margin="0,0,0,2" Height="6" IsIndeterminate="False" Value="0" Maximum="{Binding ElementName=TotalCount, Path=Text}" Background="LightGray" />
+                <StackPanel Orientation="Horizontal" Margin="0,8,0,2">
+                    <TextBlock Text="任务用时：" FontWeight="Bold"/>
+                    <TextBlock x:Name="TaskElapsedTimeTextBlock" Text="00:00:00"/>
+                </StackPanel>
             </StackPanel>
             <TextBlock Grid.Row="1" Text="结果列表" FontWeight="Bold" Margin="0,0,0,8"/>
             <DataGrid Grid.Row="2" x:Name="ResultsDataGrid" ItemsSource="{Binding AccessibilityResults}" BorderBrush="LightGray" Margin="0,0,0,8"

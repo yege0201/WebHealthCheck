@@ -14,6 +14,7 @@ using HtmlAgilityPack;
 
 using WebHealthCheck.Models;
 using WebHealthCheck.ViewModels;
+using System.Windows.Threading;
 
 
 namespace WebHealthCheck
@@ -29,11 +30,30 @@ namespace WebHealthCheck
         private BackgroundWorker _checkHealthBackgroundWorker;
         private CancellationTokenSource _checkHealthCancellationTokenSource;
 
+        private DispatcherTimer _taskDispatcherTimer;
+        private int taskElapsedTimeSeconds = 0;
+
         public MainWindow()
         {
             InitializeComponent();
 
+            InitTaskElapsedTimeDispatcherTimer();
+
             DataContext = _showDataViewModel = new ShowDataViewModel();
+        }
+
+        private void InitTaskElapsedTimeDispatcherTimer()
+        {
+            _taskDispatcherTimer = new();
+            _taskDispatcherTimer.Interval = TimeSpan.FromSeconds(1);
+            _taskDispatcherTimer.Tick += _taskDispatcherTimer_Tick;
+        }
+
+        private void _taskDispatcherTimer_Tick(object? sender, EventArgs e)
+        {
+            taskElapsedTimeSeconds += 1;
+            var elapsedTimeFriendly = new TimeSpan(0, 0, taskElapsedTimeSeconds).ToString(@"hh\:mm\:ss");
+            TaskElapsedTimeTextBlock.Text = elapsedTimeFriendly;
         }
 
         private async void ImportFromFileButton_Click(object sender, RoutedEventArgs e)
@@ -88,7 +108,13 @@ namespace WebHealthCheck
             var validCount = 0;
             var emptyCount = 0;
 
-            var targetArray = TargetsBox.Text.Split("\n");
+            var targetText = TargetsBox.Text.Trim();
+            var targetArray = string.IsNullOrWhiteSpace(targetText) ? [] : targetText.Split("\n");
+
+            if (targetArray.Length < 1)
+            {
+                return targets;
+            }
 
             foreach (var target in targetArray)
             {
@@ -135,6 +161,13 @@ namespace WebHealthCheck
             var requestTimeout = RequestTimeout.Value;
             var threadCount = (int)ThreadCount.Value;
 
+
+            if (targets.Count < 1)
+            {
+                MessageBox.Show("目标为空，请确认已添加目标");
+                return;
+            }
+
             TargetsBox.Text = string.Join("\n", targets);
 
             Semaphore = new SemaphoreSlim(threadCount);
@@ -149,6 +182,10 @@ namespace WebHealthCheck
             _checkHealthBackgroundWorker.RunWorkerCompleted += CheckHealthBackgroundWorker_RunWorkerCompleted;
             _checkHealthCancellationTokenSource = new CancellationTokenSource();
             _checkHealthBackgroundWorker.RunWorkerAsync(new { targets, httpMethod, httpCustomAttrs, requestTimeout, token = _checkHealthCancellationTokenSource.Token });
+
+            TaskElapsedTimeTextBlock.Text = "00:00:00";
+            taskElapsedTimeSeconds = 0;
+            _taskDispatcherTimer.Start();
         }
 
         private void CheckHealthBackgroundWorker_DoWork(object? sender, DoWorkEventArgs e)
@@ -214,12 +251,6 @@ namespace WebHealthCheck
 
         private void CheckHealthBackgroundWorker_ProgressChanged(object? sender, ProgressChangedEventArgs e)
         {
-            if (e.ProgressPercentage == -1)
-            {
-                MessageBox.Show("目标为空，请确认已添加目标");
-                return;
-            }
-
             if (e.UserState is not Models.AccessibilityResult result) return;
             var index = GetTargetIndexFromAccessibilityResults(result);
             _showDataViewModel.AccessibilityResults.Insert(index, result);
@@ -230,6 +261,8 @@ namespace WebHealthCheck
 
         private void CheckHealthBackgroundWorker_RunWorkerCompleted(object? sender, RunWorkerCompletedEventArgs e)
         {
+            _taskDispatcherTimer.Stop();
+
             if (e.Cancelled)
             {
                 MessageBox.Show("任务已取消");
@@ -240,7 +273,7 @@ namespace WebHealthCheck
             }
             else
             {
-                MessageBox.Show("任务已完成");
+                MessageBox.Show($"任务已完成，用时：{TaskElapsedTimeTextBlock.Text}");
 
                 // 重置任务操作按钮
                 StartButton.IsEnabled = true;
@@ -278,6 +311,7 @@ namespace WebHealthCheck
             CurrentCount.Text = "0";
             TotalCount.Text = "0";
             ProgressBar.Value = 0;
+            TaskElapsedTimeTextBlock.Text = "00:00:00";
         }
 
         private void CopyToClipboardButton_Click(object sender, RoutedEventArgs e)
