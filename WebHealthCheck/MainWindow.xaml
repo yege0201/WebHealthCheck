@@ -8,8 +8,8 @@
         xmlns:vm="clr-namespace:WebHealthCheck.ViewModels"
         mc:Ignorable="d"
         Title="网站可访问性检查工具"
-        MinHeight="720" MinWidth="1280"
-        Height="720" Width="1280"
+        MinHeight="800" MinWidth="1280"
+        Height="800" Width="1280"
         Icon="Resources/logo.ico">
     <Window.DataContext>
         <vm:ShowDataViewModel/>
@@ -104,6 +104,26 @@
                 </StackPanel>
 
                 <StackPanel Margin="0,0,0,16">
+                    <TextBlock Text="每个目标的检测次数" FontWeight="Bold" Margin="0,0,0,8"/>
+                    <StackPanel Orientation="Horizontal">
+                        <Slider x:Name="TryCountPerTarget"
+                                Grid.Column="0"
+                                Width="180"
+                                HorizontalAlignment="Left"
+                                VerticalAlignment="Center"
+                                IsSnapToTickEnabled="True"
+                                Maximum="5"
+                                Minimum="1"
+                                TickPlacement="Both"
+                                Value="1"/>
+                        <StackPanel Margin="12,-2,0,0" Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding ElementName=TryCountPerTarget, Path=Value}" />
+                            <TextBlock Text=" 次" />
+                        </StackPanel>
+                    </StackPanel>
+                </StackPanel>
+
+                <StackPanel Margin="0,0,0,16">
                     <TextBlock Text="请求超时时间" FontWeight="Bold" Margin="0,0,0,8"/>
                     <StackPanel Orientation="Horizontal">
                         <Slider x:Name="RequestTimeout"
@@ -133,10 +153,10 @@
                                 HorizontalAlignment="Left"
                                 VerticalAlignment="Center"
                                 IsSnapToTickEnabled="True"
-                                Maximum="10"
+                                Maximum="20"
                                 Minimum="1"
                                 TickPlacement="Both"
-                                Value="5"/>
+                                Value="10"/>
                         <StackPanel Margin="12,-2,0,0" Orientation="Horizontal" VerticalAlignment="Center">
                             <TextBlock Text="线程数：" />
                             <TextBlock Text="{Binding ElementName=ThreadCount, Path=Value}" />
@@ -258,8 +278,8 @@
                 </DataGrid.Columns>
             </DataGrid>
             <StackPanel Grid.Row="3" Orientation="Horizontal">
-                <ui:Button x:Name="CopyToClipboardButton" Content="复制到剪贴板" BorderBrush="LightGray" Click="CopyToClipboardButton_Click"/>
-                <ui:Button x:Name="ExportToExcelButton" Content="导出为Excel" Margin="8,0,0,0" BorderBrush="LightGray" Visibility="Hidden"/>
+                <ui:Button x:Name="CopyToClipboardButton" Content="复制到剪贴板（不含网页内容）" BorderBrush="LightGray" Click="CopyToClipboardButton_Click"/>
+                <ui:Button x:Name="ExportToExcelButton" Content="导出为Excel" Margin="8,0,0,0" BorderBrush="LightGray" Click="ExportToExcelButton_Click"/>
             </StackPanel>
         </Grid>
     </Grid>
