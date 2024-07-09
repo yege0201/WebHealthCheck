@@ -9,12 +9,13 @@ using System.Globalization;
 using System.Windows.Data;
 using System.Text;
 using System.Web;
+using System.Windows.Threading;
 
 using HtmlAgilityPack;
+using OfficeOpenXml;
 
 using WebHealthCheck.Models;
 using WebHealthCheck.ViewModels;
-using System.Windows.Threading;
 
 
 namespace WebHealthCheck
@@ -365,6 +366,9 @@ namespace WebHealthCheck
             }
 
             Clipboard.SetText(clipboardText.ToString());
+
+            clipboardText.Clear();
+            CallGC();
             MessageBox.Show("结果列表已复制到剪贴板");
         }
 
@@ -391,7 +395,8 @@ namespace WebHealthCheck
                 {
                     var handler = new HttpClientHandler
                     {
-                        ServerCertificateCustomValidationCallback = delegate { return true; }
+                        ServerCertificateCustomValidationCallback = delegate { return true; },
+                        AutomaticDecompression = System.Net.DecompressionMethods.GZip
                     };
 
                     using var httpClient = new HttpClient(handler);
@@ -520,9 +525,92 @@ namespace WebHealthCheck
             }
         }
 
+        private void CopySelectedRow_Click(object sender, RoutedEventArgs e)
+        {
+            if (ResultsDataGrid.SelectedItem != null)
+            {
+                Models.AccessibilityResult selectedItem = (Models.AccessibilityResult)ResultsDataGrid.SelectedItem;
+
+                var clipboardText = new StringBuilder();
+                clipboardText.Append(selectedItem.Id + "\t" + selectedItem.Target + "\t" + selectedItem.Url + "\t" + selectedItem.AccessStateDesc + "\t" + selectedItem.WebTitle + "\t" + selectedItem.WebContent);
+                Clipboard.SetText(clipboardText.ToString());
+                clipboardText.Clear();
+                MessageBox.Show("复制成功");
+            }
+        }
+
         private void ExportToExcelButton_Click(object sender, RoutedEventArgs e)
         {
+            ExcelPackage.LicenseContext = OfficeOpenXml.LicenseContext.NonCommercial;
 
+            using var excelPackage = new ExcelPackage();
+            var worksheet = excelPackage.Workbook.Worksheets.Add("结果列表");
+
+            worksheet.Cells["A1"].Value = "序号";
+            worksheet.Cells["B1"].Value = "目标";
+            worksheet.Cells["C1"].Value = "URL";
+            worksheet.Cells["D1"].Value = "访问状态";
+            worksheet.Cells["E1"].Value = "网页标题";
+            worksheet.Cells["F1"].Value = "网页内容";
+
+            // 获取行数据
+            var startRow = 2;
+            foreach (var item in _showDataViewModel.AccessibilityResults)
+            {
+                worksheet.Cells[$"A{startRow}"].Value = item.Id;
+                worksheet.Cells[$"B{startRow}"].Value = item.Target;
+                worksheet.Cells[$"C{startRow}"].Value = item.Url;
+                worksheet.Cells[$"D{startRow}"].Value = item.AccessStateDesc;
+                worksheet.Cells[$"E{startRow}"].Value = item.WebTitle;
+                worksheet.Cells[$"F{startRow}"].Value = item.WebContent;
+
+                startRow += 1;
+            }
+
+            // 检查并转义特殊字符
+            for (int row = 1; row < startRow; row++)
+            {
+                string cellValue = worksheet.Cells[row, 1].Text;
+                worksheet.Cells[row, 1].Value = System.Security.SecurityElement.Escape(cellValue);
+            }
+
+            var currentTimestamp = new DateTimeOffset(DateTime.UtcNow).ToUnixTimeSeconds();
+            var saveFileDialog = new SaveFileDialog
+            {
+                Filter = "Excel Files (*.xlsx)|*.xlsx|All files (*.*)|*.*",
+                FilterIndex = 1,
+                FileName = $"结果列表_{currentTimestamp}.xlsx"
+            };
+
+            var submitSave = saveFileDialog.ShowDialog();
+
+            if (submitSave == true)
+            {
+                var filePath = saveFileDialog.FileName;
+                var excelFileInfo = new FileInfo(filePath);
+
+                excelPackage.SaveAs(excelFileInfo);
+
+                MessageBox.Show($"导出成功，路径为：{filePath}");
+            }
+            else
+            {
+                excelPackage.Dispose();
+            }
+
+            CallGC();
+        }
+
+        private void CallGC()
+        {
+            try
+            {
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+            }
+            catch (Exception)
+            {
+            }
         }
     }
 

@@ -17,6 +17,9 @@
     <Window.Resources>
         <!--颜色转换器-->
         <local:ColorConverter x:Key="ColorConverter"/>
+        <ContextMenu x:Key="SelectedRowContextMenu">
+            <MenuItem Header="复制" Click="CopySelectedRow_Click"/>
+        </ContextMenu>
     </Window.Resources>
     <Grid Margin="12">
         <Grid.RowDefinitions>
@@ -215,6 +218,7 @@
                         </Setter>
                     </Style>
                     <Style TargetType="DataGridRow">
+                        <Setter Property="ContextMenu" Value="{StaticResource SelectedRowContextMenu}"/>
                         <Setter Property="Height" Value="Auto"/>
                         <Setter Property="MaxHeight" Value="180"/>
                     </Style>
@@ -278,8 +282,8 @@
                 </DataGrid.Columns>
             </DataGrid>
             <StackPanel Grid.Row="3" Orientation="Horizontal">
-                <ui:Button x:Name="CopyToClipboardButton" Content="复制到剪贴板（不含网页内容）" BorderBrush="LightGray" Click="CopyToClipboardButton_Click"/>
-                <ui:Button x:Name="ExportToExcelButton" Content="导出为Excel" Margin="8,0,0,0" BorderBrush="LightGray" Click="ExportToExcelButton_Click"/>
+                <ui:Button x:Name="ExportToExcelButton" Content="导出为 Excel 文件" BorderBrush="LightGray" Click="ExportToExcelButton_Click"/>
+                <ui:Button x:Name="CopyToClipboardButton" Content="复制到剪贴板（不含网页内容）" Margin="8,0,0,0" BorderBrush="LightGray" Click="CopyToClipboardButton_Click"/>
             </StackPanel>
         </Grid>
     </Grid>
