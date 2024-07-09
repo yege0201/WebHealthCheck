@@ -593,10 +593,8 @@ namespace WebHealthCheck
 
                 MessageBox.Show($"导出成功，路径为：{filePath}");
             }
-            else
-            {
-                excelPackage.Dispose();
-            }
+
+            excelPackage.Dispose();
 
             CallGC();
         }
